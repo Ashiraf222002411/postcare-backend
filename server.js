@@ -34,6 +34,13 @@ connectDB();
 // Routes
 app.use('/api/auth', authRoutes);
 
+app.use(cors({
+  origin: [
+    ' https://postcareplus-39391.web.app', 
+    'https://postcareplus.com'     
+  ],
+  credentials: true
+}));
 // Basic route
 app.get('/', (req, res) => {
   res.json({ 
