@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
+process.env.PYTHON_AI_URL = process.env.PYTHON_AI_URL || 'http://localhost:5001';
 
 const app = express();
 
