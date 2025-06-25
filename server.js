@@ -24,8 +24,17 @@ process.env.PYTHON_AI_URL = process.env.PYTHON_AI_URL || 'http://localhost:5001'
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS configuration
+app.use(cors({
+  origin: [
+    'https://postcareplus-39391.web.app', 
+    'https://postcareplus.com',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Connect to MongoDB
@@ -34,13 +43,6 @@ connectDB();
 // Routes
 app.use('/api/auth', authRoutes);
 
-app.use(cors({
-  origin: [
-    ' https://postcareplus-39391.web.app', 
-    'https://postcareplus.com'     
-  ],
-  credentials: true
-}));
 // Basic route
 app.get('/', (req, res) => {
   res.json({ 

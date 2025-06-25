@@ -20,4 +20,28 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect }; // Make sure this export is correct
+const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'Not authenticated' 
+      });
+    }
+
+    // Check if user's role or userType matches any of the allowed roles
+    const userRole = req.user.role || req.user.userType;
+    const allowedRoles = roles.includes('doctor') ? [...roles, 'healthcare-provider'] : roles;
+    
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({ 
+        success: false,
+        message: `Access denied. This endpoint requires one of the following roles: ${roles.join(', ')}. Your role: ${userRole}` 
+      });
+    }
+    
+    next();
+  };
+};
+
+module.exports = { protect, restrictTo };
