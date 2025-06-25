@@ -7,6 +7,7 @@ const generateToken = (userId) => {
     expiresIn: '30d',
   });
 };
+
 //  register controller
 const register = async (req, res) => {
   console.log('Registration request received');
@@ -84,6 +85,100 @@ const register = async (req, res) => {
     });
   }
 };
+
+// Register patient by doctor
+const registerPatient = async (req, res) => {
+  console.log('Doctor registering patient');
+  console.log('Request body:', req.body);
+  console.log('Doctor user:', req.user);
+  
+  try {
+    const { email, password, ...patientData } = req.body;
+
+    // Verify the requesting user is a doctor/healthcare-provider
+    if (!req.user || (req.user.userType !== 'healthcare-provider' && req.user.role !== 'doctor')) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Only healthcare providers can register patients' 
+      });
+    }
+
+    // Check if patient already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Patient with this email already exists' 
+      });
+    }
+
+    // Create patient profile with additional data
+    let patientProfile;
+    try {
+      patientProfile = await PatientProfile.create({
+        ...patientData,
+        registeredBy: req.user.id, // Link to the doctor who registered them
+        registeredByEmail: req.user.email
+      });
+    } catch (profileError) {
+      console.error('Patient profile creation error:', profileError);
+      return res.status(400).json({
+        success: false,
+        message: 'Error creating patient profile',
+        error: profileError.message,
+        validationErrors: profileError.errors
+      });
+    }
+
+    // Create patient user account
+    const patientUserData = {
+      email,
+      password,
+      userType: 'patient',
+      role: 'patient',
+      profile: patientProfile._id
+    };
+
+    const patientUser = await User.create(patientUserData);
+
+    if (patientUser) {
+      console.log('Patient registered successfully by doctor:', {
+        patientId: patientUser._id,
+        patientEmail: patientUser.email,
+        doctorId: req.user.id
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Patient registered successfully',
+        patient: {
+          _id: patientUser._id,
+          email: patientUser.email,
+          userType: patientUser.userType,
+          profile: patientProfile,
+          registeredBy: req.user.id
+        }
+      });
+    } else {
+      // If user creation failed, delete the profile
+      await patientProfile.deleteOne();
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid patient data' 
+      });
+    }
+
+  } catch (error) {
+    console.error('Patient registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error registering patient',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
 // Login controller
 const login = async (req, res) => {
   try {
@@ -169,6 +264,7 @@ const updateProfile = async (req, res) => {
 
 module.exports = {
   register,
+  registerPatient, // Add this export
   login,
   getProfile,
   updateProfile
