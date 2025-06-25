@@ -4,10 +4,11 @@ const {
   register, 
   login, 
   getProfile, 
-  updateProfile 
+  updateProfile,
+  registerPatient // Add this import
 } = require('../controllers/authController');
 const { validateRegistration, validateLogin, validate } = require('../middleware/validate');
-const { protect } = require('../middleware/auth'); // Add this import
+const { protect, restrictTo } = require('../middleware/auth'); // Add restrictTo for role-based access
 
 // Debug route
 router.get('/test', (req, res) => {
@@ -21,5 +22,8 @@ router.post('/login', validateLogin, validate, login);
 // Protected routes
 router.get('/profile', protect, getProfile);
 router.put('/profile', protect, updateProfile);
+
+// Doctor-only routes
+router.post('/register-patient', protect, restrictTo('doctor'), validateRegistration, validate, registerPatient);
 
 module.exports = router;
