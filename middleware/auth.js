@@ -5,17 +5,49 @@ const protect = async (req, res, next) => {
   try {
     let token;
 
+    console.log('Auth middleware - Authorization header:', req.headers.authorization);
+
     if (req.headers.authorization?.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
+      console.log('Auth middleware - Token extracted:', token ? 'Token present' : 'No token');
 
+      if (!process.env.JWT_SECRET) {
+        console.error('JWT_SECRET environment variable is not set');
+        return res.status(500).json({ message: 'Server configuration error' });
+      }
+
+      console.log('Auth middleware - JWT_SECRET available:', !!process.env.JWT_SECRET);
+      
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+      console.log('Auth middleware - Token decoded successfully:', decoded);
+      
+      const user = await User.findById(decoded.id).select('-password');
+      console.log('Auth middleware - User found:', user ? 'Yes' : 'No');
+      
+      if (!user) {
+        console.error('User not found for token:', decoded.id);
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
+      req.user = user;
+      console.log('Auth middleware - Success, user attached to request');
       next();
     } else {
+      console.error('No authorization header or invalid format');
       res.status(401).json({ message: 'Not authorized, no token' });
     }
   } catch (error) {
     console.error('Auth middleware error:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      console.error('JWT Error - Invalid token format or signature');
+      return res.status(401).json({ message: 'Not authorized, invalid token' });
+    }
+    if (error.name === 'TokenExpiredError') {
+      console.error('JWT Error - Token has expired');
+      return res.status(401).json({ message: 'Not authorized, token expired' });
+    }
+    
     res.status(401).json({ message: 'Not authorized, token failed' });
   }
 };
