@@ -16,6 +16,18 @@ const validateRegistration = [
     .withMessage('Invalid user type'),
 ];
 
+const validatePatientRegistration = [
+  check('email')
+    .normalizeEmail()
+    .isEmail().withMessage('Please provide a valid email'),
+  check('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long')
+    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
+  // Note: userType is not validated here as it's automatically set to 'patient' in the controller
+];
+
 const validateLogin = [
   check('email')
     .normalizeEmail()
@@ -37,6 +49,7 @@ const validate = (req, res, next) => {
 
 module.exports = {
   validateRegistration,
+  validatePatientRegistration,
   validateLogin,
   validate,
 };
