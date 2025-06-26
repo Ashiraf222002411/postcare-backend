@@ -183,19 +183,27 @@ const registerPatient = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Login attempt for:', email);
 
     // Find user and populate profile
     const user = await User.findOne({ email }).populate('profile');
     
     if (user && (await user.matchPassword(password))) {
+      const token = generateToken(user._id);
+      console.log('Login successful for:', email);
+      console.log('Generated token length:', token.length);
+      console.log('JWT_SECRET available:', !!process.env.JWT_SECRET);
+      console.log('JWT_SECRET length:', process.env.JWT_SECRET ? process.env.JWT_SECRET.length : 0);
+      
       res.json({
         _id: user._id,
         email: user.email,
         userType: user.userType,
         profile: user.profile,
-        token: generateToken(user._id)
+        token: token
       });
     } else {
+      console.log('Login failed for:', email);
       res.status(401).json({ message: 'Invalid email or password' });
     }
   } catch (error) {
