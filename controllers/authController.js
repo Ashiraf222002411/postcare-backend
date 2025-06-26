@@ -117,8 +117,7 @@ const registerPatient = async (req, res) => {
     try {
       patientProfile = await PatientProfile.create({
         ...patientData,
-        registeredBy: req.user.id, // Link to the doctor who registered them
-        registeredByEmail: req.user.email
+        registeredBy: req.user.id // Link to the doctor who registered them
       });
     } catch (profileError) {
       console.error('Patient profile creation error:', profileError);
