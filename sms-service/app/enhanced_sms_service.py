@@ -34,6 +34,19 @@ except ImportError as e:
     print(f"⚠️ AI Models not found, using fallback: {e}")
     AI_AVAILABLE = False
 
+# Import new components
+try:
+    from kinyarwanda_translations import kinyarwanda
+    from conversation_manager import ConversationManager, ConversationState
+    from sms_menu_handler import SMSMenuHandler
+    from ai_advisor import KinyarwandaAIAdvisor
+    from alert_system import AlertSystem
+    ENHANCED_FEATURES_AVAILABLE = True
+    print("✅ Enhanced Kinyarwanda features imported successfully")
+except ImportError as e:
+    print(f"⚠️ Enhanced features not available: {e}")
+    ENHANCED_FEATURES_AVAILABLE = False
+
 # Try to import numpy and scikit-learn for basic analysis
 try:
     import numpy as np
@@ -62,20 +75,21 @@ app = Flask(__name__)
 CORS(app, origins=['https://postcareplus.com', 'http://localhost:3000'])
 
 class SMSService:
-    """Enhanced SMS service with Africa's Talking integration"""
+    """Enhanced SMS service with Termux gateway integration"""
     
     def __init__(self):
-        self.api_key = "atsk_6d6575c069937926742f2bd2c866df0eeff09902147dcdc465ac33167e792034cba76e6"
-        self.username = "Ashiraf"
+        # Use Termux gateway instead of Africa's Talking
+        from config import Config
+        self.gateway_url = Config.TERMUX_GATEWAY_URL
+        self.api_key = Config.TERMUX_API_KEY
         self.sender_id = "PostCare"
-        self.base_url = "https://api.africastalking.com/version1/messaging"
         
         # SMS statistics
         self.sms_sent_today = 0
         self.total_cost_today = 0.0
         self.last_reset_date = datetime.now().date()
         
-        print("📱 SMS Service initialized with Africa's Talking")
+        print("📱 SMS Service initialized with Termux Gateway")
     
     def reset_daily_stats(self):
         """Reset daily statistics if it's a new day"""
@@ -114,7 +128,7 @@ class SMSService:
         return 'UNKNOWN'
     
     def send_sms(self, phone, message, retries=2):
-        """Send SMS with retry logic and comprehensive error handling"""
+        """Send SMS with retry logic using Termux gateway"""
         try:
             self.reset_daily_stats()
             
@@ -128,55 +142,50 @@ class SMSService:
             print(f"📝 Message preview: {message[:50]}{'...' if len(message) > 50 else ''}")
             
             headers = {
-                'apiKey': self.api_key,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json',
+                'X-API-Key': self.api_key
             }
             
             data = {
-                'username': self.username,
-                'to': formatted_phone,
+                'recipient': formatted_phone,
                 'message': message,
-                'from': self.sender_id
+                'sender_id': self.sender_id
             }
             
             for attempt in range(retries + 1):
                 try:
                     response = requests.post(
-                        self.base_url, 
+                        f"{self.gateway_url}/api/v1/send", 
                         headers=headers, 
-                        data=data, 
+                        json=data, 
                         timeout=30
                     )
                     
                     print(f"📱 SMS API Response: {response.status_code}")
                     
-                    if response.status_code == 201:
+                    if response.status_code == 200:
                         result = response.json()
-                        recipients = result['SMSMessageData']['Recipients']
-                        
-                        if recipients and recipients[0]['status'] == 'Success':
-                            cost_str = recipients[0]['cost']
-                            cost_value = float(cost_str.replace('RWF', '').replace('USD', '').strip())
+                        if result.get('success'):
+                            message_id = result.get('message_id', 'unknown')
                             
                             # Update statistics
                             self.sms_sent_today += 1
-                            self.total_cost_today += cost_value
+                            self.total_cost_today += 15  # RWF 15 per SMS
                             
                             print(f"✅ SMS sent successfully!")
-                            print(f"💰 Cost: {cost_str}")
+                            print(f"💰 Cost: RWF 15")
                             print(f"📊 Today's stats: {self.sms_sent_today} SMS, {self.total_cost_today:.2f} RWF")
                             
                             return {
                                 'success': True,
-                                'cost': cost_str,
-                                'messageId': recipients[0]['messageId'],
+                                'cost': 'RWF 15',
+                                'messageId': message_id,
                                 'network': network,
                                 'formatted_phone': formatted_phone,
-                                'messageParts': recipients[0].get('messageParts', 1)
+                                'messageParts': 1
                             }
                         else:
-                            error_msg = recipients[0]['status'] if recipients else 'Unknown error'
+                            error_msg = result.get('error', 'Unknown error')
                             print(f"❌ SMS failed: {error_msg}")
                             return {'success': False, 'error': error_msg}
                     
@@ -347,6 +356,19 @@ if AI_AVAILABLE:
 else:
     ai_system = SimpleAIAnalyzer()
 
+# Initialize enhanced features
+if ENHANCED_FEATURES_AVAILABLE:
+    conversation_manager = ConversationManager()
+    menu_handler = SMSMenuHandler(kinyarwanda, conversation_manager)
+    ai_advisor = KinyarwandaAIAdvisor(kinyarwanda, ai_system)
+    alert_system = AlertSystem(sms_service, ai_advisor, kinyarwanda)
+    print("✅ Enhanced Kinyarwanda SMS system initialized")
+else:
+    conversation_manager = None
+    menu_handler = None
+    ai_advisor = None
+    alert_system = None
+
 # Flask Routes
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -389,7 +411,20 @@ def send_welcome_sms():
         if patient_id:
             patient_manager.add_patient(patient_id, data)
         
-        message = f"Hello {name}, welcome to PostCare+! We'll monitor your recovery after {surgery_type}. We'll check in on your progress regularly to ensure your healing goes smoothly. Reply to our messages with your symptoms."
+        # Use Kinyarwanda if enhanced features available
+        if ENHANCED_FEATURES_AVAILABLE:
+            language = data.get('language', 'rw')
+            if language == 'rw':
+                message = kinyarwanda.get_translation('messages.welcome_new_patient', 
+                                                    name=name, surgery_type=surgery_type)
+            else:
+                message = f"Hello {name}, welcome to PostCare+! We'll monitor your recovery after {surgery_type}. We'll check in on your progress regularly to ensure your healing goes smoothly. Reply to our messages with your symptoms."
+            
+            # Start conversation
+            if patient_id:
+                conversation_manager.start_conversation(patient_id, phone, data)
+        else:
+            message = f"Hello {name}, welcome to PostCare+! We'll monitor your recovery after {surgery_type}. We'll check in on your progress regularly to ensure your healing goes smoothly. Reply to our messages with your symptoms."
         
         result = sms_service.send_sms(phone, message)
         
@@ -423,7 +458,30 @@ def send_followup_sms():
         
         print(f"📅 Sending Day {day} follow-up SMS to {name}")
         
-        message = f"""Hello {name}, Day {day} recovery check-in:
+        # Use Kinyarwanda if enhanced features available
+        if ENHANCED_FEATURES_AVAILABLE:
+            language = data.get('language', 'rw')
+            if language == 'rw':
+                message = kinyarwanda.get_translation('messages.followup_request', 
+                                                    name=name, day=day)
+            else:
+                message = f"""Hello {name}, Day {day} recovery check-in:
+
+Please reply with these numbers (one per line):
+1. Pain level (1-10)
+2. Wound healing (1-10)
+3. Temperature (°C)
+4. Mobility (1-10)
+
+Example reply:
+5
+7
+37.0
+8
+
+This helps us monitor your recovery progress."""
+        else:
+            message = f"""Hello {name}, Day {day} recovery check-in:
 
 Please reply with these numbers (one per line):
 1. Pain level (1-10)
@@ -493,63 +551,81 @@ def analyze_patient_response():
 
 @app.route('/webhook/sms', methods=['POST'])
 def sms_webhook():
-    """Handle incoming SMS from Africa's Talking"""
+    """Handle incoming SMS from Termux Gateway or Africa's Talking"""
     try:
-        # Africa's Talking sends data as form data
+        # Check API key if provided (for Termux gateway)
+        api_key = request.headers.get('X-API-Key')
+        expected_key = 'postcare_backend_key_2024'
+        
+        if api_key and api_key != expected_key:
+            print("❌ Invalid API key")
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        # Get data from form or JSON
         data = request.form.to_dict() if request.form else request.get_json()
         
         if not data:
             return jsonify({'error': 'No data received'}), 400
         
-        phone = data.get('from') or data.get('phoneNumber')
-        message_text = data.get('text') or data.get('message')
-        message_id = data.get('id') or data.get('messageId')
+        # Handle different gateway formats
+        # Termux gateway format: { 'number': phone, 'body': message, 'received': timestamp }
+        # Africa's Talking format: { 'from': phone, 'text': message, 'id': msg_id }
         
-        print(f"📨 Incoming SMS from {phone}: {message_text}")
+        phone = data.get('from') or data.get('number') or data.get('phoneNumber')
+        message_text = data.get('text') or data.get('body') or data.get('message')
+        message_id = data.get('id') or data.get('message_id') or data.get('_id')
+        
+        print(f"📨 Incoming SMS from {phone}: {message_text[:50]}...")
         
         if not phone or not message_text:
             print("❌ Missing phone number or message text")
             return jsonify({'error': 'Missing phone or message'}), 400
         
-        # Find patient
-        patient_id, patient = patient_manager.find_patient_by_phone(phone)
+        # Store incoming message in Node.js backend
+        try:
+            from config import Config
+            node_backend_url = Config.NODE_BACKEND_URL
+            if node_backend_url:
+                # Try to find patient info
+                patient_id, patient = patient_manager.find_patient_by_phone(phone)
+                patient_name = patient.get('name') if patient else None
+                
+                store_response = requests.post(
+                    f"{node_backend_url}/sms/messages/incoming",
+                    json={
+                        'phoneNumber': phone,
+                        'message': message_text,
+                        'patientId': patient_id,
+                        'patientName': patient_name,
+                        'type': 'general',
+                        'metadata': {
+                            'message_id': message_id,
+                            'source': 'python_sms_service'
+                        }
+                    },
+                    timeout=5
+                )
+                if store_response.status_code == 200:
+                    print(f"✅ Message stored in backend database")
+                else:
+                    print(f"⚠️ Failed to store message in backend: {store_response.status_code}")
+        except Exception as store_error:
+            print(f"⚠️ Error storing message in backend: {str(store_error)}")
+            # Continue processing even if storage fails
         
-        if not patient:
-            print(f"⚠️ Patient not found for phone {phone}")
-            # Send helpful message to unknown number
-            sms_service.send_sms(phone, "Hello! You're not registered in our PostCare system. Please contact your healthcare provider for assistance.")
-            return jsonify({'status': 'patient_not_found', 'phone': phone})
-        
-        # Parse patient response
-        response_data = parse_patient_response(message_text)
-        
-        if not response_data:
-            # Send clarification message
-            clarification = f"Hello {patient['name']}, please reply with numbers only, one per line:\n1. Pain (1-10)\n2. Wound (1-10)\n3. Temperature\n4. Mobility (1-10)"
-            sms_service.send_sms(phone, clarification)
-            return jsonify({'status': 'clarification_sent'})
-        
-        # Analyze response
-        analysis = ai_system.analyze_patient_condition(response_data)
-        
-        # Store response
-        patient_manager.add_patient_response(patient_id, response_data, analysis)
-        
-        # Generate and send response
-        response_message = generate_response_message(patient['name'], analysis)
-        sms_service.send_sms(phone, response_message)
-        
-        # Alert healthcare provider if needed
-        if analysis['needs_attention']:
-            alert_provider(patient, analysis)
-        
-        print(f"✅ SMS response processed for {patient['name']}")
-        
-        return jsonify({
-            'status': 'processed',
-            'patient': patient['name'],
-            'analysis': analysis
-        })
+        # Use enhanced conversation flow if available
+        if ENHANCED_FEATURES_AVAILABLE:
+            result = handle_enhanced_sms_conversation(phone, message_text, message_id)
+            # Return format that Termux gateway expects for auto-reply if needed
+            if isinstance(result, tuple):
+                return result
+            return jsonify({
+                'status': 'processed',
+                'send_reply': False,  # Set to True if we want to send auto-reply
+                'reply_message': None
+            }), 200
+        else:
+            return handle_legacy_sms_conversation(phone, message_text, message_id)
         
     except Exception as e:
         print(f"❌ Webhook error: {str(e)}")
@@ -668,6 +744,348 @@ Please follow up with this patient."""
         print(f"❌ Provider alert error: {str(e)}")
         logging.error(f"Provider alert error: {str(e)}")
 
+def handle_enhanced_sms_conversation(phone: str, message_text: str, message_id: str = None) -> dict:
+    """Handle SMS conversation using enhanced Kinyarwanda system"""
+    try:
+        # Check if patient exists in our system
+        patient_id, patient = patient_manager.find_patient_by_phone(phone)
+        
+        if not patient:
+            print(f"⚠️ Patient not found for phone {phone}")
+            # Send helpful message in Kinyarwanda
+            unknown_message = kinyarwanda.get_translation('messages.unknown_patient')
+            sms_service.send_sms(phone, unknown_message)
+            return jsonify({'status': 'patient_not_found', 'phone': phone})
+        
+        # Get or start conversation
+        conversation = conversation_manager.get_conversation(phone)
+        if not conversation:
+            # Start new conversation
+            conversation = conversation_manager.start_conversation(patient_id, phone, patient)
+            # Send main menu
+            main_menu = menu_handler.generate_main_menu(patient['name'])
+            sms_service.send_sms(phone, main_menu)
+            conversation_manager.update_conversation_state(phone, ConversationState.USSD_MENU)
+            return jsonify({'status': 'conversation_started', 'sent_menu': True})
+        
+        # Process message based on conversation state
+        menu_result = menu_handler.process_menu_response(phone, message_text)
+        
+        if 'error' in menu_result:
+            return jsonify({'status': 'error', 'error': menu_result['error']})
+        
+        # Handle different actions
+        action = menu_result.get('action')
+        response_message = menu_result.get('response_message')
+        
+        if action == 'analyze_and_advise':
+            # Analyze health data and provide advice
+            patient_data = menu_result.get('patient_data', {})
+            analysis = ai_system.analyze_patient_condition(patient_data)
+            
+            # Generate AI advice
+            advice = ai_advisor.generate_health_analysis_advice(patient_data, analysis, patient['name'])
+            
+            # Send advice to patient
+            sms_service.send_sms(phone, advice)
+            
+            # Store analysis
+            patient_manager.add_patient_response(patient_id, patient_data, analysis)
+            
+            # Send alerts if needed
+            if analysis.get('needs_attention', False) or analysis.get('severity', 0) > 5:
+                conversation_context = conversation_manager.get_conversation_context(phone)
+                alert_results = alert_system.process_patient_alert(patient, analysis, conversation_context)
+                print(f"📢 Alerts sent: {alert_results}")
+            
+            return jsonify({
+                'status': 'health_analyzed',
+                'analysis': analysis,
+                'alerts_sent': analysis.get('needs_attention', False)
+            })
+        
+        elif action == 'generate_ai_response':
+            # Generate AI response for free conversation
+            conversation_context = conversation_manager.get_conversation_context(phone)
+            ai_response = ai_advisor.generate_response(message_text, conversation_context)
+            
+            # Send AI response
+            sms_service.send_sms(phone, ai_response)
+            
+            # Check if emergency detected
+            if kinyarwanda.detect_emergency(message_text):
+                emergency_analysis = {'severity': 8, 'alerts': ['EMERGENCY'], 'recovery_prediction': 0.3}
+                alert_results = alert_system.send_emergency_alert(patient, message_text, emergency_analysis)
+                print(f"🚨 Emergency alerts sent: {alert_results}")
+            
+            return jsonify({
+                'status': 'ai_response_sent',
+                'emergency_detected': kinyarwanda.detect_emergency(message_text)
+            })
+        
+        elif action == 'handle_emergency':
+            # Handle emergency mode
+            emergency_details = menu_result.get('emergency_details', message_text)
+            emergency_analysis = {'severity': 9, 'alerts': ['EMERGENCY'], 'recovery_prediction': 0.2}
+            
+            # Send immediate emergency response
+            emergency_response = ai_advisor._generate_emergency_response(emergency_details, patient['name'])
+            sms_service.send_sms(phone, emergency_response)
+            
+            # Send emergency alerts
+            alert_results = alert_system.send_emergency_alert(patient, emergency_details, emergency_analysis)
+            print(f"🚨 Emergency processing: {alert_results}")
+            
+            return jsonify({
+                'status': 'emergency_handled',
+                'alerts_sent': alert_results
+            })
+        
+        elif action == 'alert_doctor':
+            # Connect to doctor
+            conversation_context = conversation_manager.get_conversation_context(phone)
+            analysis = {'severity': 5, 'alerts': ['DOCTOR_REQUEST'], 'recovery_prediction': 0.6}
+            alert_results = alert_system.process_patient_alert(patient, analysis, conversation_context)
+            
+            if response_message:
+                sms_service.send_sms(phone, response_message)
+            
+            return jsonify({
+                'status': 'doctor_alerted',
+                'alerts_sent': alert_results
+            })
+        
+        else:
+            # Send standard response
+            if response_message:
+                sms_service.send_sms(phone, response_message)
+            
+            return jsonify({
+                'status': 'processed',
+                'action': action,
+                'next_state': menu_result.get('next_state')
+            })
+        
+    except Exception as e:
+        print(f"❌ Enhanced SMS processing error: {str(e)}")
+        logging.error(f"Enhanced SMS error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+def handle_legacy_sms_conversation(phone: str, message_text: str, message_id: str = None) -> dict:
+    """Handle SMS conversation using legacy system"""
+    try:
+        # Find patient
+        patient_id, patient = patient_manager.find_patient_by_phone(phone)
+        
+        if not patient:
+            print(f"⚠️ Patient not found for phone {phone}")
+            # Send helpful message to unknown number
+            sms_service.send_sms(phone, "Hello! You're not registered in our PostCare system. Please contact your healthcare provider for assistance.")
+            return jsonify({'status': 'patient_not_found', 'phone': phone})
+        
+        # Parse patient response
+        response_data = parse_patient_response(message_text)
+        
+        if not response_data:
+            # Send clarification message
+            clarification = f"Hello {patient['name']}, please reply with numbers only, one per line:\n1. Pain (1-10)\n2. Wound (1-10)\n3. Temperature\n4. Mobility (1-10)"
+            sms_service.send_sms(phone, clarification)
+            return jsonify({'status': 'clarification_sent'})
+        
+        # Analyze response
+        analysis = ai_system.analyze_patient_condition(response_data)
+        
+        # Store response
+        patient_manager.add_patient_response(patient_id, response_data, analysis)
+        
+        # Generate and send response
+        response_message = generate_response_message(patient['name'], analysis)
+        sms_service.send_sms(phone, response_message)
+        
+        # Alert healthcare provider if needed
+        if analysis['needs_attention']:
+            alert_provider(patient, analysis)
+        
+        print(f"✅ SMS response processed for {patient['name']}")
+        
+        return jsonify({
+            'status': 'processed',
+            'patient': patient['name'],
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        print(f"❌ Legacy SMS processing error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/start_conversation', methods=['POST'])
+def start_conversation():
+    """Start a new conversation with a patient"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        patient_id = data.get('patient_id')
+        phone = data.get('phone')
+        patient_info = data.get('patient_info', {})
+        
+        if not patient_id or not phone:
+            return jsonify({'error': 'Patient ID and phone required'}), 400
+        
+        # Start conversation
+        conversation = conversation_manager.start_conversation(patient_id, phone, patient_info)
+        
+        # Send main menu
+        main_menu = menu_handler.generate_main_menu(patient_info.get('name', 'Patient'))
+        result = sms_service.send_sms(phone, main_menu)
+        
+        return jsonify({
+            'success': True,
+            'conversation_id': conversation['conversation_id'],
+            'menu_sent': result.get('success', False)
+        })
+        
+    except Exception as e:
+        print(f"❌ Start conversation error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/conversation_status/<phone>', methods=['GET'])
+def get_conversation_status(phone):
+    """Get conversation status for a phone number"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        conversation = conversation_manager.get_conversation(phone)
+        if not conversation:
+            return jsonify({'status': 'no_active_conversation'})
+        
+        context = conversation_manager.get_conversation_context(phone)
+        
+        return jsonify({
+            'status': 'active',
+            'conversation_state': conversation['state'],
+            'patient_name': conversation.get('patient_info', {}).get('name'),
+            'started_at': conversation['started_at'],
+            'last_activity': conversation['last_activity'],
+            'message_count': len(conversation.get('message_history', [])),
+            'context': context
+        })
+        
+    except Exception as e:
+        print(f"❌ Get conversation status error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/send_menu', methods=['POST'])
+def send_main_menu():
+    """Send main menu to a patient"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        data = request.get_json()
+        phone = data.get('phone')
+        patient_name = data.get('patient_name', 'Patient')
+        
+        if not phone:
+            return jsonify({'error': 'Phone number required'}), 400
+        
+        # Generate and send menu
+        main_menu = menu_handler.generate_main_menu(patient_name)
+        result = sms_service.send_sms(phone, main_menu)
+        
+        return jsonify({
+            'success': result.get('success', False),
+            'menu_sent': True,
+            'message': main_menu
+        })
+        
+    except Exception as e:
+        print(f"❌ Send menu error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/alert_statistics', methods=['GET'])
+def get_alert_statistics():
+    """Get alert system statistics"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        stats = alert_system.get_alert_statistics()
+        conversation_stats = conversation_manager.get_statistics()
+        
+        return jsonify({
+            'alert_statistics': stats,
+            'conversation_statistics': conversation_stats,
+            'system_status': {
+                'enhanced_features': True,
+                'kinyarwanda_support': True,
+                'ai_advisor': True,
+                'alert_system': True
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Get alert statistics error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/send_daily_summary', methods=['POST'])
+def send_daily_summary():
+    """Send daily summary to healthcare providers"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        data = request.get_json() or {}
+        target_provider = data.get('target_provider', 'cwh_coordinator')
+        
+        result = alert_system.send_daily_summary(target_provider)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Send daily summary error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/emergency_alert', methods=['POST'])
+def send_emergency_alert():
+    """Send emergency alert for a patient"""
+    try:
+        if not ENHANCED_FEATURES_AVAILABLE:
+            return jsonify({'error': 'Enhanced features not available'}), 503
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        patient_info = data.get('patient_info', {})
+        emergency_details = data.get('emergency_details', '')
+        analysis = data.get('analysis', {
+            'severity': 10,
+            'alerts': ['EMERGENCY'],
+            'recovery_prediction': 0.1
+        })
+        
+        if not patient_info or not emergency_details:
+            return jsonify({'error': 'Patient info and emergency details required'}), 400
+        
+        # Send emergency alert
+        alert_results = alert_system.send_emergency_alert(patient_info, emergency_details, analysis)
+        
+        return jsonify({
+            'success': True,
+            'emergency_alerts_sent': alert_results,
+            'total_notifications': len(alert_results)
+        })
+        
+    except Exception as e:
+        print(f"❌ Emergency alert error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # Background scheduler (optional)
 def run_scheduler():
     """Run background tasks"""
@@ -685,6 +1103,13 @@ if __name__ == '__main__':
     print("📱 SMS Integration: Active")
     print(f"🤖 AI System: {'Advanced ML Models' if AI_AVAILABLE else 'Simple Rule-Based'}")
     print(f"👥 Patients Loaded: {len(patient_manager.patients)}")
+    if ENHANCED_FEATURES_AVAILABLE:
+        print(f"🌍 Language Support: Kinyarwanda + English")
+        print(f"📱 SMS Menu System: Active")
+        print(f"🤖 AI Advisor: Kinyarwanda Medical Advice")
+        print(f"📢 Alert System: CHW + Doctor Notifications")
+    else:
+        print(f"⚠️ Enhanced Features: Not Available")
     print("🌐 Starting Flask server on port 5001...")
     print("🔗 Available endpoints:")
     print("   GET  /health              - Health check")
@@ -694,6 +1119,13 @@ if __name__ == '__main__':
     print("   POST /webhook/sms         - SMS webhook")
     print("   POST /test_sms           - Test SMS sending")
     print("   GET  /statistics         - System statistics")
+    if ENHANCED_FEATURES_AVAILABLE:
+        print("   POST /start_conversation  - Start Kinyarwanda conversation")
+        print("   GET  /conversation_status/<phone> - Get conversation status")
+        print("   POST /send_menu          - Send main menu")
+        print("   GET  /alert_statistics   - Alert system statistics")
+        print("   POST /send_daily_summary - Send daily summary to providers")
+        print("   POST /emergency_alert    - Send emergency alert")
     print("=" * 60)
     
     # Start background scheduler in a separate thread

@@ -1,3 +1,4 @@
+from termux_gateway import TermuxSMSGateway
 import numpy as np
 import tensorflow as tf
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -18,6 +19,15 @@ class IntelligentPostCareSystem:
         self.patient_data = self._load_patient_data()
         self.active_sessions = {}
         self.alert_thresholds = self._load_alert_thresholds()
+        self.sms_gateway = TermuxSMSGateway(
+            Config.TERMUX_GATEWAY_URL,
+            Config.TERMUX_API_KEY
+        )
+        
+        if self.sms_gateway.health_check():
+            logging.info("✅ Termux gateway connected")
+        else:
+            logging.warning("⚠️ Termux gateway offline!")
 
     def _load_or_create_classifier(self):
         try:
@@ -103,47 +113,9 @@ class IntelligentPostCareSystem:
             alerts.append("WOUND_CONCERN")
         return alerts
 
-    def send_sms(self, phone_number, message):
-        """Send SMS using SmsMobile API with improved error handling"""
-        try:
-            logging.info(f"Attempting to send SMS to {phone_number}")
-            
-            payload = {
-                "recipient": phone_number,
-                "sender_id": Config.SMS_SENDER_ID,
-                "message": message,
-                "api_key": Config.SMS_API_KEY
-            }
-            
-            headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-
-            response = requests.post(
-                Config.SMS_API_URL,
-                json=payload,
-                headers=headers,
-                timeout=30  # Add timeout
-            )
-
-            logging.info(f"SMS API Response: {response.status_code} - {response.text}")
-
-            if response.status_code == 200:
-                logging.info(f"Successfully sent SMS to {phone_number}")
-                return True
-            else:
-                logging.error(f"Failed to send SMS. Status: {response.status_code}, Response: {response.text}")
-                return False
-
-        except requests.Timeout:
-            logging.error(f"Timeout while sending SMS to {phone_number}")
-            return False
-        except requests.ConnectionError:
-            logging.error(f"Connection error while sending SMS to {phone_number}")
-            return False
-        except Exception as e:
-            logging.error(f"Error sending SMS: {str(e)}")
-            return False
-
+     def send_sms(self, phone_number, message):
+        """Send SMS using Termux gateway"""
+        return self.sms_gateway.send_sms(phone_number, message)
+   
+   
     # ... [Rest of the IntelligentPostCareSystem class implementation]

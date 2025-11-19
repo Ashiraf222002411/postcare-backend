@@ -17,15 +17,17 @@ const validateRegistration = [
 ];
 
 const validatePatientRegistration = [
-  check('email')
-    .normalizeEmail()
-    .isEmail().withMessage('Please provide a valid email'),
-  check('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
-    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
-    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
-  // Note: userType is not validated here as it's automatically set to 'patient' in the controller
+  // No email/password validation needed for patient profiles
+  // Patients are registered by doctors and don't need login accounts
+  check('firstName')
+    .notEmpty()
+    .withMessage('First name is required'),
+  check('lastName')
+    .notEmpty()
+    .withMessage('Last name is required'),
+  check('phoneNumber')
+    .notEmpty()
+    .withMessage('Phone number is required'),
 ];
 
 const validateLogin = [

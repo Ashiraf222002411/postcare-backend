@@ -93,7 +93,7 @@ const registerPatient = async (req, res) => {
   console.log('Doctor user:', req.user);
   
   try {
-    const { email, password, ...patientData } = req.body;
+    const patientData = req.body;
 
     // Verify the requesting user is a doctor/healthcare-provider
     if (!req.user || (req.user.userType !== 'healthcare-provider' && req.user.role !== 'doctor')) {
@@ -103,16 +103,7 @@ const registerPatient = async (req, res) => {
       });
     }
 
-    // Check if patient already exists
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Patient with this email already exists' 
-      });
-    }
-
-    // Create patient profile with additional data
+    // Create patient profile only (no User account needed)
     let patientProfile;
     try {
       patientProfile = await PatientProfile.create({
@@ -129,43 +120,24 @@ const registerPatient = async (req, res) => {
       });
     }
 
-    // Create patient user account
-    const patientUserData = {
-      email,
-      password,
-      userType: 'patient',
-      role: 'patient',
-      profile: patientProfile._id
-    };
+    console.log('Patient profile created successfully by doctor:', {
+      patientProfileId: patientProfile._id,
+      patientName: `${patientProfile.firstName} ${patientProfile.lastName}`,
+      doctorId: req.user.id
+    });
 
-    const patientUser = await User.create(patientUserData);
-
-    if (patientUser) {
-      console.log('Patient registered successfully by doctor:', {
-        patientId: patientUser._id,
-        patientEmail: patientUser.email,
-        doctorId: req.user.id
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Patient registered successfully',
-        patient: {
-          _id: patientUser._id,
-          email: patientUser.email,
-          userType: patientUser.userType,
-          profile: patientProfile,
-          registeredBy: req.user.id
-        }
-      });
-    } else {
-      // If user creation failed, delete the profile
-      await patientProfile.deleteOne();
-      return res.status(400).json({ 
-        success: false,
-        message: 'Invalid patient data' 
-      });
-    }
+    res.status(201).json({
+      success: true,
+      message: 'Patient registered successfully',
+      patient: {
+        _id: patientProfile._id,
+        firstName: patientProfile.firstName,
+        lastName: patientProfile.lastName,
+        phoneNumber: patientProfile.phoneNumber,
+        profile: patientProfile,
+        registeredBy: req.user.id
+      }
+    });
 
   } catch (error) {
     console.error('Patient registration error:', error);
@@ -271,7 +243,7 @@ const updateProfile = async (req, res) => {
 
 module.exports = {
   register,
-  registerPatient, // Add this export
+  registerPatient,
   login,
   getProfile,
   updateProfile

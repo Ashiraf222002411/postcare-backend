@@ -41,7 +41,8 @@ app.use(express.json());
 connectDB();
 
 // Routes
-app.use('/api/auth', authRoutes);
+const routes = require('./routes/index');
+app.use('/api', routes);
 
 // Basic route
 app.get('/', (req, res) => {
